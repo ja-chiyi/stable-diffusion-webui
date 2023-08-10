@@ -18,6 +18,9 @@ def wrap_queued_call(func):
     return f
 
 
+from functools import wraps
+
+
 def wrap_gradio_gpu_call(func, extra_outputs=None):
     @wraps(func)
     def f(*args, **kwargs):
@@ -90,7 +93,7 @@ def wrap_gradio_call(func, extra_outputs=None, add_stats=False):
             elapsed_text = f"{elapsed_m} min. "+elapsed_text
 
         if run_memmon:
-            mem_stats = {k: -(v//-(1024*1024)) for k, v in shared.mem_mon.stop().items()}
+            mem_stats = {k: -(v // -(1024 * 1024)) for k, v in shared.mem_mon.stop().items()}
             active_peak = mem_stats['active_peak']
             reserved_peak = mem_stats['reserved_peak']
             sys_peak = mem_stats['system_peak']

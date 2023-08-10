@@ -255,9 +255,11 @@ def initialize():
     modules.sd_models.setup_model()
     startup_timer.record("setup SD model")
 
+    # CodeFormer是一个非常出色的人脸修复模型
     codeformer.setup_model(cmd_opts.codeformer_models_path)
     startup_timer.record("setup codeformer")
 
+    # GFPGAN 是腾讯开源的人脸修复算法
     gfpgan.setup_model(cmd_opts.gfpgan_models_path)
     startup_timer.record("setup gfpgan")
 
@@ -295,8 +297,15 @@ def initialize_rest(*, reload_script_modules=False):
     modelloader.load_upscalers()
     startup_timer.record("load upscalers")
 
+    """
+    它的全称是变分自动编码器 (Variational Auto-Encoder)，
+    是机器学习中的一种人工神经网络结构。
+    当然我们都不必了解的它的原理，只需要理解它是在 SD 模型的基础做微调的，
+    类似于我们熟悉的滤镜，让生成的图片调整饱和度。
+    """
     modules.sd_vae.refresh_vae_list()
     startup_timer.record("refresh VAE")
+    """文本反演(嵌入) 也就是文本嵌入。通俗的讲其实就是把提示词打包成为一个提示词"""
     modules.textual_inversion.textual_inversion.list_textual_inversion_templates()
     startup_timer.record("refresh textual inversion templates")
 
@@ -430,10 +439,13 @@ def webui():
 
         setup_middleware(app)
 
+        # 注册 检查任务是否完成api
         modules.progress.setup_progress_api(app)
+        # 注册 ui界面api
         modules.ui.setup_ui_api(app)
 
         if launch_api:
+            # 暴露外部使用api
             create_api(app)
 
         ui_extra_networks.add_pages_to_demo(app)
@@ -445,6 +457,11 @@ def webui():
 
         timer.startup_record = startup_timer.dump()
         print(f"Startup time: {startup_timer.summary()}.")
+
+        if cmd_opts.subpath:
+            redirector = FastAPI()
+            redirector.get("/")
+            gradio.mount_gradio_app(redirector, shared.demo, path=f"/{cmd_opts.subpath}")
 
         try:
             while True:

@@ -301,6 +301,7 @@ class Api:
         return script_args
 
     def text2imgapi(self, txt2imgreq: models.StableDiffusionTxt2ImgProcessingAPI):
+        print("!1111111111111111111111111111")
         script_runner = scripts.scripts_txt2img
         if not script_runner.scripts:
             script_runner.initialize_scripts(False)
@@ -327,7 +328,9 @@ class Api:
         send_images = args.pop('send_images', True)
         args.pop('save_images', None)
 
+        print("prompt==================", args["prompt"],)
         with self.queue_lock:
+# <<<<<<< Updated upstream
             with closing(StableDiffusionProcessingTxt2Img(sd_model=shared.sd_model, **args)) as p:
                 p.scripts = script_runner
                 p.outpath_grids = opts.outdir_txt2img_grids
@@ -343,6 +346,23 @@ class Api:
                         processed = process_images(p)
                 finally:
                     shared.state.end()
+# =======
+#             p = StableDiffusionProcessingTxt2Img(sd_model=shared.sd_model, **args)
+#             p.scripts = script_runner
+#             p.outpath_grids = opts.outdir_txt2img_grids
+#             p.outpath_samples = opts.outdir_txt2img_samples
+#
+#             shared.state.begin()
+#             print("selectable_scripts :", selectable_scripts)
+#             if selectable_scripts is not None:
+#                 p.script_args = script_args
+#                 processed = scripts.scripts_txt2img.run(p, *p.script_args) # Need to pass args as list here
+#             else:
+#                 print("script_args", script_args)
+#                 p.script_args = tuple(script_args) # Need to pass args as tuple here
+#                 processed = process_images(p)
+#             shared.state.end()
+# >>>>>>> Stashed changes
 
         b64images = list(map(encode_pil_to_base64, processed.images)) if send_images else []
 

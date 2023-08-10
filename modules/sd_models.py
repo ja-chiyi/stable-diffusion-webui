@@ -380,7 +380,9 @@ def enable_midas_autodownload():
     midas.api.load_model_inner = midas.api.load_model
 
     def load_model_wrapper(model_type):
+        print("load_model_wrapper--", load_model_wrapper)
         path = midas.api.ISL_PATHS[model_type]
+        print("path, ", path)
         if not os.path.exists(path):
             if not os.path.exists(midas_path):
                 mkdir(midas_path)
