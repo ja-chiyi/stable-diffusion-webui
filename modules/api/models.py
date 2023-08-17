@@ -181,6 +181,7 @@ class PNGInfoResponse(BaseModel):
     items: dict = Field(title="Items", description="An object containing all the info the image had")
 
 class ProgressRequest(BaseModel):
+    task_id: str = Field(default=None,title="Task ID", description="job id of the task")
     skip_current_image: bool = Field(default=False, title="Skip current image", description="Skip current image serialization")
 
 class ProgressResponse(BaseModel):

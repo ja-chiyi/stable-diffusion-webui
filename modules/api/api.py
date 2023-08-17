@@ -22,7 +22,7 @@ from modules.processing import StableDiffusionProcessingTxt2Img, StableDiffusion
 from modules.textual_inversion.textual_inversion import create_embedding, train_embedding
 from modules.textual_inversion.preprocess import preprocess
 from modules.hypernetworks.hypernetwork import create_hypernetwork, train_hypernetwork
-from PIL import PngImagePlugin,Image
+from PIL import PngImagePlugin, Image
 from modules.sd_models import checkpoints_list, unload_model_weights, reload_model_weights, checkpoint_aliases
 from modules.sd_vae import vae_dict
 from modules.sd_models_config import find_checkpoint_config_near_filename
@@ -56,7 +56,21 @@ def setUpscalers(req: dict):
     return reqDict
 
 
+def is_valid_url(url):
+    from urllib.parse import urlparse
+    try:
+        result = urlparse(url)
+        return all([result.scheme in ("http", "https"), result.netloc])
+    except ValueError:
+        return False
+
+
 def decode_base64_to_image(encoding):
+    import requests
+    if is_valid_url(encoding):
+        content = requests.get(encoding).content
+        image = Image.open(BytesIO(content))
+        return image
     if encoding.startswith("data:image/"):
         encoding = encoding.split(";")[1].split(",")[1]
     try:
@@ -76,19 +90,21 @@ def encode_pil_to_base64(image):
                 if isinstance(key, str) and isinstance(value, str):
                     metadata.add_text(key, value)
                     use_metadata = True
-            image.save(output_bytes, format="PNG", pnginfo=(metadata if use_metadata else None), quality=opts.jpeg_quality)
+            image.save(output_bytes, format="PNG", pnginfo=(metadata if use_metadata else None),
+                       quality=opts.jpeg_quality)
 
         elif opts.samples_format.lower() in ("jpg", "jpeg", "webp"):
             if image.mode == "RGBA":
                 image = image.convert("RGB")
             parameters = image.info.get('parameters', None)
             exif_bytes = piexif.dump({
-                "Exif": { piexif.ExifIFD.UserComment: piexif.helper.UserComment.dump(parameters or "", encoding="unicode") }
+                "Exif": {
+                    piexif.ExifIFD.UserComment: piexif.helper.UserComment.dump(parameters or "", encoding="unicode")}
             })
             if opts.samples_format.lower() in ("jpg", "jpeg"):
-                image.save(output_bytes, format="JPEG", exif = exif_bytes, quality=opts.jpeg_quality)
+                image.save(output_bytes, format="JPEG", exif=exif_bytes, quality=opts.jpeg_quality)
             else:
-                image.save(output_bytes, format="WEBP", exif = exif_bytes, quality=opts.jpeg_quality)
+                image.save(output_bytes, format="WEBP", exif=exif_bytes, quality=opts.jpeg_quality)
 
         else:
             raise HTTPException(status_code=500, detail="Invalid image format")
@@ -141,7 +157,8 @@ def api_middleware(app: FastAPI):
             message = f"API error: {request.method}: {request.url} {err}"
             if rich_available:
                 print(message)
-                console.print_exception(show_locals=True, max_frames=2, extra_lines=1, suppress=[anyio, starlette], word_wrap=False, width=min([console.width, 200]))
+                console.print_exception(show_locals=True, max_frames=2, extra_lines=1, suppress=[anyio, starlette],
+                                        word_wrap=False, width=min([console.width, 200]))
             else:
                 errors.report(message, exc_info=True)
         return JSONResponse(status_code=vars(e).get('status_code', 500), content=jsonable_encoder(err))
@@ -226,7 +243,8 @@ class Api:
             if compare_digest(credentials.password, self.credentials[credentials.username]):
                 return True
 
-        raise HTTPException(status_code=401, detail="Incorrect username or password", headers={"WWW-Authenticate": "Basic"})
+        raise HTTPException(status_code=401, detail="Incorrect username or password",
+                            headers={"WWW-Authenticate": "Basic"})
 
     def get_selectable_script(self, script_name, script_runner):
         if script_name is None or script_name == "":
@@ -258,17 +276,17 @@ class Api:
         return script_runner.scripts[script_idx]
 
     def init_default_script_args(self, script_runner):
-        #find max idx from the scripts in runner and generate a none array to init script_args
+        # find max idx from the scripts in runner and generate a none array to init script_args
         last_arg_index = 1
         for script in script_runner.scripts:
             if last_arg_index < script.args_to:
                 last_arg_index = script.args_to
         # None everywhere except position 0 to initialize script args
-        script_args = [None]*last_arg_index
+        script_args = [None] * last_arg_index
         script_args[0] = 0
 
         # get default values
-        with gr.Blocks(): # will throw errors calling ui function without this
+        with gr.Blocks():  # will throw errors calling ui function without this
             for script in script_runner.scripts:
                 if script.ui(script.is_img2img):
                     ui_default_values = []
@@ -292,16 +310,18 @@ class Api:
                     raise HTTPException(status_code=422, detail=f"always on script {alwayson_script_name} not found")
                 # Selectable script in always on script param check
                 if alwayson_script.alwayson is False:
-                    raise HTTPException(status_code=422, detail="Cannot have a selectable script in the always on scripts params")
+                    raise HTTPException(status_code=422,
+                                        detail="Cannot have a selectable script in the always on scripts params")
                 # always on script with no arg should always run so you don't really need to add them to the requests
                 if "args" in request.alwayson_scripts[alwayson_script_name]:
                     # min between arg length in scriptrunner and arg length in the request
-                    for idx in range(0, min((alwayson_script.args_to - alwayson_script.args_from), len(request.alwayson_scripts[alwayson_script_name]["args"]))):
-                        script_args[alwayson_script.args_from + idx] = request.alwayson_scripts[alwayson_script_name]["args"][idx]
+                    for idx in range(0, min((alwayson_script.args_to - alwayson_script.args_from),
+                                            len(request.alwayson_scripts[alwayson_script_name]["args"]))):
+                        script_args[alwayson_script.args_from + idx] = \
+                        request.alwayson_scripts[alwayson_script_name]["args"][idx]
         return script_args
 
     def text2imgapi(self, txt2imgreq: models.StableDiffusionTxt2ImgProcessingAPI):
-        print("!1111111111111111111111111111")
         script_runner = scripts.scripts_txt2img
         if not script_runner.scripts:
             script_runner.initialize_scripts(False)
@@ -320,49 +340,32 @@ class Api:
 
         args = vars(populate)
         args.pop('script_name', None)
-        args.pop('script_args', None) # will refeed them to the pipeline directly after initializing them
+        args.pop('script_args', None)  # will refeed them to the pipeline directly after initializing them
         args.pop('alwayson_scripts', None)
 
-        script_args = self.init_script_args(txt2imgreq, self.default_script_arg_txt2img, selectable_scripts, selectable_script_idx, script_runner)
+        script_args = self.init_script_args(txt2imgreq, self.default_script_arg_txt2img, selectable_scripts,
+                                            selectable_script_idx, script_runner)
 
         send_images = args.pop('send_images', True)
         args.pop('save_images', None)
 
-        print("prompt==================", args["prompt"],)
         with self.queue_lock:
-# <<<<<<< Updated upstream
+            # <<<<<<< Updated upstream
             with closing(StableDiffusionProcessingTxt2Img(sd_model=shared.sd_model, **args)) as p:
                 p.scripts = script_runner
                 p.outpath_grids = opts.outdir_txt2img_grids
                 p.outpath_samples = opts.outdir_txt2img_samples
 
                 try:
-                    shared.state.begin(job="scripts_txt2img")
+                    shared.state.begin(job_id=txt2imgreq.task_id, job="scripts_txt2img")
                     if selectable_scripts is not None:
                         p.script_args = script_args
-                        processed = scripts.scripts_txt2img.run(p, *p.script_args) # Need to pass args as list here
+                        processed = scripts.scripts_txt2img.run(p, *p.script_args)  # Need to pass args as list here
                     else:
-                        p.script_args = tuple(script_args) # Need to pass args as tuple here
+                        p.script_args = tuple(script_args)  # Need to pass args as tuple here
                         processed = process_images(p)
                 finally:
                     shared.state.end()
-# =======
-#             p = StableDiffusionProcessingTxt2Img(sd_model=shared.sd_model, **args)
-#             p.scripts = script_runner
-#             p.outpath_grids = opts.outdir_txt2img_grids
-#             p.outpath_samples = opts.outdir_txt2img_samples
-#
-#             shared.state.begin()
-#             print("selectable_scripts :", selectable_scripts)
-#             if selectable_scripts is not None:
-#                 p.script_args = script_args
-#                 processed = scripts.scripts_txt2img.run(p, *p.script_args) # Need to pass args as list here
-#             else:
-#                 print("script_args", script_args)
-#                 p.script_args = tuple(script_args) # Need to pass args as tuple here
-#                 processed = process_images(p)
-#             shared.state.end()
-# >>>>>>> Stashed changes
 
         b64images = list(map(encode_pil_to_base64, processed.images)) if send_images else []
 
@@ -395,12 +398,14 @@ class Api:
             populate.sampler_index = None  # prevent a warning later on
 
         args = vars(populate)
-        args.pop('include_init_images', None)  # this is meant to be done by "exclude": True in model, but it's for a reason that I cannot determine.
+        args.pop('include_init_images',
+                 None)  # this is meant to be done by "exclude": True in model, but it's for a reason that I cannot determine.
         args.pop('script_name', None)
         args.pop('script_args', None)  # will refeed them to the pipeline directly after initializing them
         args.pop('alwayson_scripts', None)
 
-        script_args = self.init_script_args(img2imgreq, self.default_script_arg_img2img, selectable_scripts, selectable_script_idx, script_runner)
+        script_args = self.init_script_args(img2imgreq, self.default_script_arg_img2img, selectable_scripts,
+                                            selectable_script_idx, script_runner)
 
         send_images = args.pop('send_images', True)
         args.pop('save_images', None)
@@ -411,9 +416,8 @@ class Api:
                 p.scripts = script_runner
                 p.outpath_grids = opts.outdir_img2img_grids
                 p.outpath_samples = opts.outdir_img2img_samples
-
                 try:
-                    shared.state.begin(job="scripts_img2img")
+                    shared.state.begin(job_id=img2imgreq.task_id, job="scripts_img2img")
                     if selectable_scripts is not None:
                         p.script_args = script_args
                         processed = scripts.scripts_img2img.run(p, *p.script_args) # Need to pass args as list here
@@ -470,6 +474,9 @@ class Api:
 
     def progressapi(self, req: models.ProgressRequest = Depends()):
         # copy from check_progress_call of ui.py
+
+        if req.task_id is not None and shared.state.job_id != req.task_id:
+            return models.ProgressResponse(progress=0, eta_relative=0, state=shared.state.dict(),textinfo=shared.state.textinfo)
 
         if shared.state.job_count == 0:
             return models.ProgressResponse(progress=0, eta_relative=0, state=shared.state.dict(), textinfo=shared.state.textinfo)
@@ -537,7 +544,7 @@ class Api:
         options = {}
         for key in shared.opts.data.keys():
             metadata = shared.opts.data_labels.get(key)
-            if(metadata is not None):
+            if (metadata is not None):
                 options.update({key: shared.opts.data.get(key, shared.opts.data_labels.get(key).default)})
             else:
                 options.update({key: shared.opts.data.get(key, None)})
@@ -559,7 +566,8 @@ class Api:
         return vars(shared.cmd_opts)
 
     def get_samplers(self):
-        return [{"name": sampler[0], "aliases":sampler[2], "options":sampler[3]} for sampler in sd_samplers.all_samplers]
+        return [{"name": sampler[0], "aliases": sampler[2], "options": sampler[3]} for sampler in
+                sd_samplers.all_samplers]
 
     def get_upscalers(self):
         return [
@@ -582,7 +590,9 @@ class Api:
         ]
 
     def get_sd_models(self):
-        return [{"title": x.title, "model_name": x.model_name, "hash": x.shorthash, "sha256": x.sha256, "filename": x.filename, "config": find_checkpoint_config_near_filename(x)} for x in checkpoints_list.values()]
+        return [{"title": x.title, "model_name": x.model_name, "hash": x.shorthash, "sha256": x.sha256,
+                 "filename": x.filename, "config": find_checkpoint_config_near_filename(x)} for x in
+                checkpoints_list.values()]
 
     def get_sd_vaes(self):
         return [{"model_name": x, "filename": vae_dict[x]} for x in vae_dict.keys()]
@@ -591,16 +601,16 @@ class Api:
         return [{"name": name, "path": shared.hypernetworks[name]} for name in shared.hypernetworks]
 
     def get_face_restorers(self):
-        return [{"name":x.name(), "cmd_dir": getattr(x, "cmd_dir", None)} for x in shared.face_restorers]
+        return [{"name": x.name(), "cmd_dir": getattr(x, "cmd_dir", None)} for x in shared.face_restorers]
 
     def get_realesrgan_models(self):
-        return [{"name":x.name,"path":x.data_path, "scale":x.scale} for x in get_realesrgan_models(None)]
+        return [{"name": x.name, "path": x.data_path, "scale": x.scale} for x in get_realesrgan_models(None)]
 
     def get_prompt_styles(self):
         styleList = []
         for k in shared.prompt_styles.styles:
             style = shared.prompt_styles.styles[k]
-            styleList.append({"name":style[0], "prompt": style[1], "negative_prompt": style[2]})
+            styleList.append({"name": style[0], "prompt": style[1], "negative_prompt": style[2]})
 
         return styleList
 
@@ -631,19 +641,18 @@ class Api:
     def create_embedding(self, args: dict):
         try:
             shared.state.begin(job="create_embedding")
-            filename = create_embedding(**args) # create empty embedding
-            sd_hijack.model_hijack.embedding_db.load_textual_inversion_embeddings() # reload embeddings so new one can be immediately used
+            filename = create_embedding(**args)  # create empty embedding
+            sd_hijack.model_hijack.embedding_db.load_textual_inversion_embeddings()  # reload embeddings so new one can be immediately used
             return models.CreateResponse(info=f"create embedding filename: {filename}")
         except AssertionError as e:
             return models.TrainResponse(info=f"create embedding error: {e}")
         finally:
             shared.state.end()
 
-
     def create_hypernetwork(self, args: dict):
         try:
             shared.state.begin(job="create_hypernetwork")
-            filename = create_hypernetwork(**args) # create empty embedding
+            filename = create_hypernetwork(**args)  # create empty embedding
             return models.CreateResponse(info=f"create hypernetwork filename: {filename}")
         except AssertionError as e:
             return models.TrainResponse(info=f"create hypernetwork error: {e}")
@@ -653,7 +662,7 @@ class Api:
     def preprocess(self, args: dict):
         try:
             shared.state.begin(job="preprocess")
-            preprocess(**args) # quick operation unless blip/booru interrogation is enabled
+            preprocess(**args)  # quick operation unless blip/booru interrogation is enabled
             shared.state.end()
             return models.PreprocessResponse(info='preprocess complete')
         except KeyError as e:
@@ -672,7 +681,7 @@ class Api:
             if not apply_optimizations:
                 sd_hijack.undo_optimizations()
             try:
-                embedding, filename = train_embedding(**args) # can take a long time to complete
+                embedding, filename = train_embedding(**args)  # can take a long time to complete
             except Exception as e:
                 error = e
             finally:
@@ -714,22 +723,23 @@ class Api:
             import os
             import psutil
             process = psutil.Process(os.getpid())
-            res = process.memory_info() # only rss is cross-platform guaranteed so we dont rely on other values
-            ram_total = 100 * res.rss / process.memory_percent() # and total memory is calculated as actual value is not cross-platform safe
-            ram = { 'free': ram_total - res.rss, 'used': res.rss, 'total': ram_total }
+            res = process.memory_info()  # only rss is cross-platform guaranteed so we dont rely on other values
+            ram_total = 100 * res.rss / process.memory_percent()  # and total memory is calculated as actual value is not cross-platform safe
+            ram = {'free': ram_total - res.rss, 'used': res.rss, 'total': ram_total}
         except Exception as err:
-            ram = { 'error': f'{err}' }
+            ram = {'error': f'{err}'}
         try:
             import torch
             if torch.cuda.is_available():
                 s = torch.cuda.mem_get_info()
-                system = { 'free': s[0], 'used': s[1] - s[0], 'total': s[1] }
+                system = {'free': s[0], 'used': s[1] - s[0], 'total': s[1]}
                 s = dict(torch.cuda.memory_stats(shared.device))
-                allocated = { 'current': s['allocated_bytes.all.current'], 'peak': s['allocated_bytes.all.peak'] }
-                reserved = { 'current': s['reserved_bytes.all.current'], 'peak': s['reserved_bytes.all.peak'] }
-                active = { 'current': s['active_bytes.all.current'], 'peak': s['active_bytes.all.peak'] }
-                inactive = { 'current': s['inactive_split_bytes.all.current'], 'peak': s['inactive_split_bytes.all.peak'] }
-                warnings = { 'retries': s['num_alloc_retries'], 'oom': s['num_ooms'] }
+                allocated = {'current': s['allocated_bytes.all.current'], 'peak': s['allocated_bytes.all.peak']}
+                reserved = {'current': s['reserved_bytes.all.current'], 'peak': s['reserved_bytes.all.peak']}
+                active = {'current': s['active_bytes.all.current'], 'peak': s['active_bytes.all.peak']}
+                inactive = {'current': s['inactive_split_bytes.all.current'],
+                            'peak': s['inactive_split_bytes.all.peak']}
+                warnings = {'retries': s['num_alloc_retries'], 'oom': s['num_ooms']}
                 cuda = {
                     'system': system,
                     'active': active,
@@ -746,7 +756,8 @@ class Api:
 
     def launch(self, server_name, port, root_path):
         self.app.include_router(self.router)
-        uvicorn.run(self.app, host=server_name, port=port, timeout_keep_alive=shared.cmd_opts.timeout_keep_alive, root_path=root_path)
+        uvicorn.run(self.app, host=server_name, port=port, timeout_keep_alive=shared.cmd_opts.timeout_keep_alive,
+                    root_path=root_path)
 
     def kill_webui(self):
         restart.stop_program()
@@ -759,4 +770,3 @@ class Api:
     def stop_webui(request):
         shared.state.server_command = "stop"
         return Response("Stopping.")
-
